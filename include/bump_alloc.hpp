@@ -2,6 +2,7 @@
 
 
 #include <cstdint>
+#include <cassert>
 
 
 
@@ -23,9 +24,11 @@ public:
     }
 
 
-	obj *alloc() {
-		return head++;
-
+	obj *alloc(uint32_t count = 1) {
+		assert(head + count <= data + pool_capacity);
+		obj *p = head;
+		head += count;
+		return p;
 	}
 
 	void free() {
