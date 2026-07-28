@@ -29,6 +29,30 @@ public:
 		head = data;
 	}
 
+	bump_pool(const bump_pool& other) = delete;
+
+	bump_pool operator=(const bump_pool& other) = delete;
+
+	bump_pool(bump_pool&& other) noexcept {
+		data = other.data;
+		head = other.head;
+		other.data = nullptr;
+		other.head = nullptr;
+	}
+
+	bump_pool& operator=(bump_pool&& other) noexcept {
+		if (this != other) {
+			delete[] data;
+
+			data = other.data;
+            head = other.head;
+
+			other.data = nullptr;
+			other.head = nullptr;
+		}
+		return *this;
+	}
+
 	~bump_pool() {
         delete[] data;
     }
