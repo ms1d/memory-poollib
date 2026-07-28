@@ -41,9 +41,14 @@ public:
 
 	// Free n chunks (defaults to 1). If n is larger than current number of chunks, free all.
 	void free(uint32_t n = 1) {
-		for (int i = chunks.size() - 1; i >= 0 && n >= 0; i--, n--) {
-            chunks[i].free();
-        }
+		while (n > 0) {
+			chunks[current_chunk].free();
+			chunks.pop_back();
+			n--;
+
+			if (current_chunk == 0) break;
+			current_chunk--;
+		}
 	}
 
 
@@ -56,8 +61,8 @@ private:
 };
 
 
-template<typename obj>
-class arena<obj, mp_type::thread_safe> {
+template<typename obj, uint32_t chunk_capacity>
+class arena<obj, chunk_capacity, mp_type::thread_safe> {
 	
 
 public:
