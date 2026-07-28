@@ -3,7 +3,6 @@
 
 #include <cassert>
 #include <cstdint>
-#include <cstdlib>
 
 
 
@@ -16,12 +15,12 @@ public:
 
 
 	bump_pool() {
-		data = malloc(sizeof(obj) * pool_capacity);
+		data = new obj[pool_capacity];
 		head = data;
 	}
 
 	~bump_pool() {
-        free(data);
+        delete[] data;
     }
 
 
@@ -38,7 +37,7 @@ public:
 
 private:
 	
-	const obj *data;
+	obj *data;
 	obj *head;
 
 
