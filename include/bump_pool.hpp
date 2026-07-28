@@ -45,6 +45,10 @@ public:
 	void free() {
 		head = data;
 	}
+
+	uint64_t remaining_capacity() {
+		return pool_capacity - (head - data);
+	}
 	
 
 
