@@ -21,7 +21,7 @@ public:
 	}
 
 	~arena() {
-		free();
+		free(-1);
 	}
 
 
