@@ -41,7 +41,7 @@ public:
 	}
 
 	bump_pool& operator=(bump_pool&& other) noexcept {
-		if (this != other) {
+		if (this != &other) {
 			delete[] data;
 
 			data = other.data;
