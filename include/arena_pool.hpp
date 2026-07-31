@@ -41,6 +41,10 @@ public:
 
 	// Free n chunks (defaults to 1). If n is larger than current number of chunks, free all.
 	void free(uint32_t n = 1) {
+		if (current_chunk == 0) {
+			chunks[0].free();
+			return;
+		}
 		while (n > 0) {
 			chunks[current_chunk].free();
 			chunks.pop_back();
