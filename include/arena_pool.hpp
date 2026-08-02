@@ -98,6 +98,7 @@ public:
 	// is atomic. There WILL exist a point in the program where chunks_end
 	// is NOT the `next` of any node in the linked list.
 	obj *alloc(uint32_t count = 1) {
+		assert(count <= chunk_capacity);
 		auto chunks_end_local = chunks_end.load(std::memory_order_relaxed);
 		auto res = chunks_end_local->pool.alloc(count);
 		if (res != nullptr) return res;

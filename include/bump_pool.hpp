@@ -2,6 +2,7 @@
 
 
 #include <atomic>
+#include <cassert>
 #include <cstdint>
 
 
@@ -60,6 +61,7 @@ public:
 
 	// Returns ptr to allocated obj, or nullptr if failed
 	obj *alloc(uint32_t count = 1) {
+		assert(count <= pool_capacity);
 		if (head + count > data + pool_capacity) return nullptr;
 		obj *p = head;
 		head += count;
