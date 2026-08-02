@@ -41,6 +41,7 @@ public:
     }
 
 	// Free n chunks (defaults to 1). If n is larger than current number of chunks, free all.
+	// NOT atomic. Intended to be called at synchronisation points ONLY
 	void free(uint32_t n = 1) {
 		if (current_chunk == 0) {
 			chunks[0].free();
@@ -73,7 +74,7 @@ class arena<obj, chunk_capacity, mp_type::thread_safe> {
 
 struct chunk {
 	bump_pool<obj, chunk_capacity, mp_type::thread_safe> pool;
-	chunk *next = nullptr;
+	std::atomic<chunk*> next = nullptr;
 };
 
 
@@ -94,23 +95,39 @@ public:
 	}
 
 
-	// Do NOT assume that if the linked list is grown, the act of growing
-	// is atomic. There WILL exist a point in the program where chunks_end
+	// Do NOT assume that the linked list is grown atomically.
+	// There WILL exist a point in the program where chunks_end
 	// is NOT the `next` of any node in the linked list.
 	obj *alloc(uint32_t count = 1) {
 		assert(count <= chunk_capacity);
-		auto chunks_end_local = chunks_end.load(std::memory_order_relaxed);
+		auto chunks_end_local = chunks_end.load(std::memory_order_acquire);
 		auto res = chunks_end_local->pool.alloc(count);
 		if (res != nullptr) return res;
 
-		// Need to add a new chunk
+		auto add_chunk_success = false;
+		// Try to cycle chunks_end forward if its next is not nullptr
+		while (chunks_end_local->next.load(std::memory_order_acquire) != nullptr && res == nullptr && !add_chunk_success) {
+			add_chunk_success = chunks_end.compare_exchange_weak(
+				chunks_end_local,
+				chunks_end_local->next.load(std::memory_order_acquire),
+				std::memory_order_release,
+				std::memory_order_acquire
+			);
+			if (add_chunk_success) break;
+			res = chunks_end_local->pool.alloc(count);
+		}
+
+		if (res != nullptr) return res;
+		if (add_chunk_success) return alloc(count);
+
+		// Need to add a new chunk now
 		auto new_chunk = new chunk, chunks_end_copy = chunks_end_local;
 
 		while (res == nullptr && !chunks_end.compare_exchange_weak(
 					chunks_end_local,
 					new_chunk,
-					std::memory_order_relaxed,
-					std::memory_order_relaxed)) {
+					std::memory_order_release,
+					std::memory_order_acquire)) {
 			res = chunks_end_local->pool.alloc(count);
 		}
 
@@ -119,12 +136,19 @@ public:
 		}
 
 		// CAS succeeded, need to link nodes
-		chunks_end_copy->next = new_chunk;
+		chunks_end_copy->next.store(new_chunk, std::memory_order_release);
 		return alloc(count);
 	}
 
-	void free() {
-
+	// Free n chunks (defaults to 1). If n is larger than current number of chunks, free all.
+	// NOT atomic. Intended to be called at synchronisation points ONLY
+	void free(uint32_t n = 1) {
+		auto tmp = chunks;
+		while (tmp != nullptr) {
+			tmp->pool.free();
+			tmp = tmp->next;
+		}
+		chunks_end = chunks;
 	}
 
 
