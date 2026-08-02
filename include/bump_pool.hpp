@@ -97,7 +97,7 @@ public:
 
 	bump_pool() {
 		data = new obj[pool_capacity];
-		head = data;
+		head = data.load();
 	}
 
 	~bump_pool() {
