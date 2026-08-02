@@ -125,8 +125,7 @@ public:
 
 private:
 	
-	obj *data;
-	std::atomic<obj*> head;
+	std::atomic<obj*> data, head;
 
 
 };
