@@ -110,7 +110,7 @@ public:
 			add_chunk_success = chunks_end.compare_exchange_weak(
 				chunks_end_local,
 				chunks_end_local->next.load(std::memory_order_acquire),
-				std::memory_order_acq_rel,
+				std::memory_order_release,
 				std::memory_order_acquire
 			);
 			if (add_chunk_success) break;
