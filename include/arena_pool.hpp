@@ -100,18 +100,18 @@ public:
 	// is NOT the `next` of any node in the linked list.
 	obj *alloc(uint32_t count = 1) {
 		assert(count <= chunk_capacity);
-		auto chunks_end_local = chunks_end.load(std::memory_order_seq_cst);
+		auto chunks_end_local = chunks_end.load(std::memory_order_acquire);
 		auto res = chunks_end_local->pool.alloc(count);
 		if (res != nullptr) return res;
 
 		auto add_chunk_success = false;
 		// Try to cycle chunks_end forward if its next is not nullptr
-		while (chunks_end_local->next.load(std::memory_order_seq_cst) != nullptr && res == nullptr && !add_chunk_success) {
+		while (chunks_end_local->next.load(std::memory_order_acquire) != nullptr && res == nullptr && !add_chunk_success) {
 			add_chunk_success = chunks_end.compare_exchange_weak(
 				chunks_end_local,
-				chunks_end_local->next.load(std::memory_order_seq_cst),
-				std::memory_order_seq_cst,
-				std::memory_order_seq_cst
+				chunks_end_local->next.load(std::memory_order_acquire),
+				std::memory_order_release,
+				std::memory_order_acquire
 			);
 			if (add_chunk_success) break;
 			res = chunks_end_local->pool.alloc(count);
@@ -126,8 +126,8 @@ public:
 		while (res == nullptr && !chunks_end.compare_exchange_weak(
 					chunks_end_local,
 					new_chunk,
-					std::memory_order_seq_cst,
-					std::memory_order_seq_cst)) {
+					std::memory_order_release,
+					std::memory_order_acquire)) {
 			res = chunks_end_local->pool.alloc(count);
 		}
 
@@ -136,7 +136,7 @@ public:
 		}
 
 		// CAS succeeded, need to link nodes
-		chunks_end_copy->next.store(new_chunk, std::memory_order_seq_cst);
+		chunks_end_copy->next.store(new_chunk, std::memory_order_release);
 		return alloc(count);
 	}
 
