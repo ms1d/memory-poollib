@@ -106,10 +106,10 @@ public:
 	// Returns ptr to allocated obj, or nullptr if failed
 	obj *alloc(uint32_t count = 1) {
 		auto head_local = head.load(std::memory_order_relaxed);
-		if (head_local + count > data + pool_capacity) return nullptr;
+		if ((head_local - data) + count > pool_capacity) return nullptr;
 
 		while(!head.compare_exchange_weak(head_local, head_local + count, std::memory_order_relaxed, std::memory_order_relaxed)) {
-			if (head_local + count > data + pool_capacity) return nullptr;
+			if ((head_local - data) + count > pool_capacity) return nullptr;
 		}
 
 		return head_local;
