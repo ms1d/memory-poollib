@@ -108,8 +108,7 @@ public:
 		auto head_local = head.load(std::memory_order_relaxed);
 		if (head_local + count > data + pool_capacity) return nullptr;
 
-		while(!head.compare_exchange_weak(head_local, head_local + count, std::memory_order_acquire, std::memory_order_relaxed)) {
-			head_local = head.load(std::memory_order_relaxed);
+		while(!head.compare_exchange_weak(head_local, head_local + count, std::memory_order_relaxed, std::memory_order_relaxed)) {
 			if (head_local + count > data + pool_capacity) return nullptr;
 		}
 
@@ -117,7 +116,7 @@ public:
 	}
 
 	void free() {
-		head = data;
+		head.store(data, std::memory_order_relaxed);
 	}
 	
 
