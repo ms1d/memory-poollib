@@ -88,7 +88,7 @@ public:
 	~arena() {
 		chunk *curr = chunks;
 		while (curr != nullptr) {
-			auto next = curr->next;
+			auto next = curr->next.load(std::memory_order_relaxed);
 			delete curr;
 			curr = next;
 		}
