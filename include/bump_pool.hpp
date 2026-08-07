@@ -97,7 +97,7 @@ public:
 
 	bump_pool() {
 		data = new obj[pool_capacity];
-		head.store(data.load(std::memory_order_relaxed), std::memory_order_relaxed);
+		head = data.load();
 	}
 
 	~bump_pool() {
@@ -118,9 +118,7 @@ public:
 	}
 
 	void free() {
-		delete[] data;
-		data = new obj[pool_capacity];
-		head.store(data.load(std::memory_order_relaxed), std::memory_order_relaxed);
+		head.store(data, std::memory_order_relaxed);
 	}
 	
 
