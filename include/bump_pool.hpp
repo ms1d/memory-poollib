@@ -177,11 +177,10 @@ public:
 	// Returns ptr to allocated obj, or nullptr if failed
 	char *alloc(uint32_t count = 1, uint32_t align = 1) {
 		assert(count <= pool_capacity);
-		auto new_head = head + align - (head - data) % align + count;
-		if (new_head > data + pool_capacity) return nullptr;
-		char *p = head;
-		head = new_head;
-		return p;
+		auto aligned_head = head + (align - (head - data) % align) % align;
+		if (aligned_head + count > data + pool_capacity) return nullptr;
+		head = aligned_head + count;
+		return aligned_head;
 	}
 
 	void free() {
@@ -226,12 +225,12 @@ public:
 		auto head_local = head.load(std::memory_order_relaxed),
 			 data_local = data.load(std::memory_order_relaxed);
 
-		auto new_head = head + align - (head - data) % align + count;
-		if (new_head + count > data_local + pool_capacity) return nullptr;
+		auto aligned_head = head + (align - (head - data) % align) % align;
+		if (aligned_head + count > data_local + pool_capacity) return nullptr;
 
-		while(!head.compare_exchange_weak(head_local, new_head, std::memory_order_relaxed, std::memory_order_relaxed)) {
-			new_head = head + align - (head - data) % align + count;
-			if (new_head > data_local + pool_capacity) return nullptr;
+		while(!head.compare_exchange_weak(head_local, aligned_head + count, std::memory_order_relaxed, std::memory_order_relaxed)) {
+			aligned_head = head + (align - (head - data) % align) % align;
+			if (aligned_head + count > data_local + pool_capacity) return nullptr;
 		}
 
 		return head_local;
