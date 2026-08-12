@@ -177,7 +177,7 @@ public:
 	// Returns ptr to allocated obj, or nullptr if failed
 	char *alloc(uint32_t count = 1, uint32_t align = 1) {
 		assert(count <= pool_capacity);
-		auto new_head = head + count + (align - count % align);
+		auto new_head = head + align - (head - data) % align + count;
 		if (new_head > data + pool_capacity) return nullptr;
 		char *p = head;
 		head = new_head;
@@ -226,11 +226,12 @@ public:
 		auto head_local = head.load(std::memory_order_relaxed),
 			 data_local = data.load(std::memory_order_relaxed);
 
-		auto new_head = head_local + count + (align - count % align);
-		if (head_local + count > data_local + pool_capacity) return nullptr;
+		auto new_head = head + align - (head - data) % align + count;
+		if (new_head + count > data_local + pool_capacity) return nullptr;
 
 		while(!head.compare_exchange_weak(head_local, new_head, std::memory_order_relaxed, std::memory_order_relaxed)) {
-			if (head_local + count > data_local + pool_capacity) return nullptr;
+			new_head = head + align - (head - data) % align + count;
+			if (new_head > data_local + pool_capacity) return nullptr;
 		}
 
 		return head_local;
