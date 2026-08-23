@@ -177,6 +177,7 @@ public:
 	// Returns ptr to allocated obj, or nullptr if failed
 	char *alloc(uint32_t count = 1, uint32_t align = 1) {
 		assert(count <= pool_capacity);
+		if (align == 0) return nullptr;
 		auto aligned_head = head + (align - (head - data) % align) % align;
 		if (aligned_head + count > data + pool_capacity) return nullptr;
 		head = aligned_head + count;
@@ -222,6 +223,7 @@ public:
 
 	// Returns ptr to allocated char, or nullptr if failed
 	char *alloc(uint32_t count = 1, uint32_t align = 1) {
+		if (align == 0) return nullptr;
 		auto head_local = head.load(std::memory_order_relaxed),
 			 data_local = data.load(std::memory_order_relaxed);
 
