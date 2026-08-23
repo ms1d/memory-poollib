@@ -225,11 +225,11 @@ public:
 		auto head_local = head.load(std::memory_order_relaxed),
 			 data_local = data.load(std::memory_order_relaxed);
 
-		auto aligned_head = head + (align - (head - data) % align) % align;
+		auto aligned_head = head_local + (align - (head_local - data_local) % align) % align;
 		if (aligned_head + count > data_local + pool_capacity) return nullptr;
 
 		while(!head.compare_exchange_weak(head_local, aligned_head + count, std::memory_order_relaxed, std::memory_order_relaxed)) {
-			aligned_head = head + (align - (head - data) % align) % align;
+			aligned_head = head_local + (align - (head_local - data_local) % align) % align;
 			if (aligned_head + count > data_local + pool_capacity) return nullptr;
 		}
 
