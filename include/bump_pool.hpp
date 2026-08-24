@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cassert>
 #include <cstdint>
+#include <type_traits>
 
 
 
@@ -60,12 +61,22 @@ public:
 
 
 	// Returns ptr to allocated obj, or nullptr if failed
-	obj *alloc(uint32_t count = 1) {
+	obj *alloc(uint32_t count = 1) requires(!std::is_same<obj, char>::value) {
 		assert(count <= pool_capacity);
 		if (head + count > data + pool_capacity) return nullptr;
 		obj *p = head;
 		head += count;
 		return p;
+	}
+
+	// char specialisation allows for additional align argument
+	obj *alloc(uint32_t count = 1, uint32_t align = 1) requires(std::is_same<obj, char>::value) {
+		assert(count <= pool_capacity);
+		if (align == 0) return nullptr;
+		auto aligned_head = head + (align - (head - data) % align) % align;
+		if (aligned_head + count > data + pool_capacity) return nullptr;
+		head = aligned_head + count;
+		return aligned_head;
 	}
 
 	void free() {
@@ -106,7 +117,7 @@ public:
 
 
 	// Returns ptr to allocated obj, or nullptr if failed
-	obj *alloc(uint32_t count = 1) {
+	obj *alloc(uint32_t count = 1) requires(!std::is_same<obj, char>::value) {
 		auto head_local = head.load(std::memory_order_relaxed);
 		if ((head_local - data.load(std::memory_order_relaxed)) + count > pool_capacity) return nullptr;
 
@@ -117,112 +128,8 @@ public:
 		return head_local;
 	}
 
-	void free() {
-		head.store(data, std::memory_order_relaxed);
-	}
-	
-
-
-private:
-
-	// Data should be atomic so that loading it is guaranteed to be atomic
-	std::atomic<obj*> data, head;
-
-
-};
-
-// Specialisations for char (raw byte pools)
-
-template<uint32_t pool_capacity>
-class bump_pool<char, pool_capacity, mp_type::thread_unsafe> {
-
-
-public:
-
-
-	bump_pool() {
-		data = new char[pool_capacity];
-		head = data;
-	}
-
-	bump_pool(const bump_pool& other) = delete;
-
-	bump_pool operator=(const bump_pool& other) = delete;
-
-	bump_pool(bump_pool&& other) noexcept {
-		data = other.data;
-		head = other.head;
-		other.data = nullptr;
-		other.head = nullptr;
-	}
-
-	bump_pool& operator=(bump_pool&& other) noexcept {
-		if (this != &other) {
-			delete[] data;
-
-			data = other.data;
-            head = other.head;
-
-			other.data = nullptr;
-			other.head = nullptr;
-		}
-		return *this;
-	}
-
-	~bump_pool() {
-        delete[] data;
-    }
-
-
-	// Returns ptr to allocated obj, or nullptr if failed
-	char *alloc(uint32_t count = 1, uint32_t align = 1) {
-		assert(count <= pool_capacity);
-		if (align == 0) return nullptr;
-		auto aligned_head = head + (align - (head - data) % align) % align;
-		if (aligned_head + count > data + pool_capacity) return nullptr;
-		head = aligned_head + count;
-		return aligned_head;
-	}
-
-	void free() {
-		head = data;
-	}
-
-	uint64_t remaining_capacity() {
-		return pool_capacity - (head - data);
-	}
-	
-
-
-private:
-	
-	char *data;
-	char *head;
-
-
-};
-
-
-
-// Templated bump allocator with compile time capacity (thread_safe)
-template<uint32_t pool_capacity>
-class bump_pool<char, pool_capacity, mp_type::thread_safe> {
-
-
-public:
-
-	bump_pool() {
-		data = new char[pool_capacity];
-		head = data.load();
-	}
-
-	~bump_pool() {
-        delete[] data;
-    }
-
-
-	// Returns ptr to allocated char, or nullptr if failed
-	char *alloc(uint32_t count = 1, uint32_t align = 1) {
+	// char specialisation allows for additional align argument
+	obj *alloc(uint32_t count = 1, uint32_t align = 1) requires(std::is_same<obj, char>::value) {
 		if (align == 0) return nullptr;
 		auto head_local = head.load(std::memory_order_relaxed),
 			 data_local = data.load(std::memory_order_relaxed);
@@ -247,7 +154,7 @@ public:
 private:
 
 	// Data should be atomic so that loading it is guaranteed to be atomic
-	std::atomic<char*> data, head;
+	std::atomic<obj*> data, head;
 
 
 };
