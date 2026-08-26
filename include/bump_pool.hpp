@@ -63,7 +63,7 @@ public:
 	// Returns ptr to allocated obj, or nullptr if failed
 	obj *alloc(uint32_t count = 1) requires(!std::is_same<obj, char>::value) {
 		assert(count <= pool_capacity);
-		if (head + count > data + pool_capacity) return nullptr;
+		if (head > data + pool_capacity - count) return nullptr;
 		obj *p = head;
 		head += count;
 		return p;
@@ -74,7 +74,7 @@ public:
 		assert(count <= pool_capacity);
 		if (align == 0) return nullptr;
 		auto aligned_head = head + (align - (head - data) % align) % align;
-		if (aligned_head + count > data + pool_capacity) return nullptr;
+		if (aligned_head > data + pool_capacity - count) return nullptr;
 		head = aligned_head + count;
 		return aligned_head;
 	}
@@ -119,10 +119,10 @@ public:
 	// Returns ptr to allocated obj, or nullptr if failed
 	obj *alloc(uint32_t count = 1) requires(!std::is_same<obj, char>::value) {
 		auto head_local = head.load(std::memory_order_relaxed);
-		if ((head_local - data.load(std::memory_order_relaxed)) + count > pool_capacity) return nullptr;
+		if ((head_local - data.load(std::memory_order_relaxed)) > pool_capacity - count) return nullptr;
 
 		while(!head.compare_exchange_weak(head_local, head_local + count, std::memory_order_relaxed, std::memory_order_relaxed)) {
-			if ((head_local - data) + count > pool_capacity) return nullptr;
+			if ((head_local - data) > pool_capacity - count) return nullptr;
 		}
 
 		return head_local;
@@ -135,14 +135,14 @@ public:
 			 data_local = data.load(std::memory_order_relaxed);
 
 		auto aligned_head = head_local + (align - (head_local - data_local) % align) % align;
-		if (aligned_head + count > data_local + pool_capacity) return nullptr;
+		if (aligned_head > data_local + pool_capacity - count) return nullptr;
 
 		while(!head.compare_exchange_weak(head_local, aligned_head + count, std::memory_order_relaxed, std::memory_order_relaxed)) {
 			aligned_head = head_local + (align - (head_local - data_local) % align) % align;
-			if (aligned_head + count > data_local + pool_capacity) return nullptr;
+			if (aligned_head > data_local + pool_capacity - count) return nullptr;
 		}
 
-		return head_local;
+		return aligned_head;
 	}
 
 	void free() {
