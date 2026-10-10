@@ -136,7 +136,8 @@ public:
 	// char specialisation allows for additional align argument
 	obj *alloc(uint32_t count = 1, uint32_t align = 1) requires(std::is_same<obj, char>::value) {
 		if (align == 0) return nullptr;
-		auto head_local = head.load(std::memory_order_relaxed);
+		auto head_local = head.load(std::memory_order_relaxed),
+			 data_local = data.load(std::memory_order_relaxed);
 
 		auto addr = reinterpret_cast<std::uintptr_t>(head_local);
 		auto aligned_addr = addr + (align - (addr % align)) % align;

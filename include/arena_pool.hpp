@@ -200,13 +200,26 @@ char *alloc(uint32_t count = 1, uint32_t align = 1) requires(std::is_same<obj, c
 	// Free n chunks (defaults to 1). If n is larger than current number of chunks, free all.
 	// NOT atomic. Intended to be called at synchronisation points ONLY
 	void free(uint32_t n = 1) {
+		std::vector<chunk*> stack;
+		int current_chunk = -1;
+
+		auto start = chunks;
+
+		while (start != nullptr) {
+			stack.push_back(start);
+			start = start->next;
+			current_chunk++;
+		}
+
 		if (current_chunk == 0) {
 			chunks[0].free();
 			return;
 		}
+
 		while (n > 0) {
-			chunks[current_chunk].free();
-			chunks.pop_back();
+			stack.end()->free();
+			stack.pop_back();
+
 			n--;
 
 			if (current_chunk == 0) break;
