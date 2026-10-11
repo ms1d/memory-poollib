@@ -212,12 +212,12 @@ char *alloc(uint32_t count = 1, uint32_t align = 1) requires(std::is_same<obj, c
 		}
 
 		if (current_chunk == 0) {
-			chunks[0].free();
+			chunks[0].pool.free();
 			return;
 		}
 
 		while (n > 0) {
-			stack.end()->free();
+			stack.back()->pool.free();
 			stack.pop_back();
 
 			n--;
