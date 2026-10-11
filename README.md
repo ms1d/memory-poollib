@@ -1,5 +1,17 @@
 # memory-poollib
 
+<!--toc:start-->
+- [memory-poollib](#memory-poollib)
+  - [Features](#features)
+  - [Motivation](#motivation)
+  - [Types](#types)
+  - [Architecture Diagrams](#architecture-diagrams)
+  - [Design Decisions](#design-decisions)
+  - [Build Instructions](#build-instructions)
+  - [Usage](#usage)
+  - [Benchmarks](#benchmarks)
+  - [Limitations](#limitations)
+
 Several lightweight, specialised memory pool implementations in C++ designed for
 efficient allocation and reuse of memory.
 
