@@ -362,3 +362,6 @@ have finished before resetting it or destroying it.
 thread is using the allocator before either operation begins.
 - **Objects are not constructed:** it is the user's responsibility to ensure that
 objects are properly constructed and destructed
+- **Object constructors must not throw:** all methods are marked `noexcept`
+- **`alloc_and_cast` forwards the same args per element: be careful when passing
+rvalues to create an array, since this can double-move them**
