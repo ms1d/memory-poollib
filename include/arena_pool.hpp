@@ -24,7 +24,7 @@ public:
 	}
 
 	~arena() {
-		free(-1);
+		free<true>(-1);
 	}
 
 
@@ -78,7 +78,7 @@ public:
 		auto res = reinterpret_cast<T*>(ptr);
 		
 		for (uint64_t i = 0; i < count; i++) {
-			std::construct_at(res + i, std::forward<arg_Ts...>(args)...);
+			std::construct_at(res + i, std::forward<arg_Ts>(args)...);
 		}
 		
 		return res;
@@ -265,7 +265,7 @@ public:
 		auto res = reinterpret_cast<T*>(ptr);
 		
 		for (uint64_t i = 0; i < count; i++) {
-			std::construct_at(res + i, std::forward<arg_Ts...>(args)...);
+			std::construct_at(res + i, std::forward<arg_Ts>(args)...);
 		}
 		
 		return res;

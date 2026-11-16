@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <new>
 #include <type_traits>
 
 
@@ -32,13 +33,15 @@ protected:
 public:
 
 
-	bump_pool_base() : data(new obj[pool_capacity]) {
+	static_assert(pool_capacity <= SIZE_MAX / sizeof(obj));
+	bump_pool_base() : data((obj *const)std::malloc(sizeof(obj) * pool_capacity)) {
+		if (!data) throw std::bad_alloc();
 		head.store(data);
 	}
 
 
 	~bump_pool_base() {
-		delete[] data;
+		std::free(data);
 	}
 
 	bump_pool_base(const bump_pool_base&) = delete;
@@ -78,7 +81,7 @@ public:
 	// Returns ptr to allocated obj, or nullptr if failed
 	obj *alloc(uint64_t count = 1) requires(!std::is_same<obj, char>::value) {
 		obj *p = head.load();
-		if (p - data > remaining_capacity()) return nullptr;
+		if (count > remaining_capacity()) [[unlikely]] return nullptr;
 		head.store(p + count);
 		return p;
 	}
@@ -86,13 +89,14 @@ public:
 	// char specialisation allows for additional align argument
 	obj *alloc(uint64_t count = 1, uint64_t align = 1) noexcept
 	requires(std::is_same<obj, char>::value) {
-		if (align == 0) return nullptr;
+		if (align == 0) [[unlikely]] return nullptr;
 		
 		auto addr = reinterpret_cast<std::uintptr_t>(head.load());
 		auto aligned_addr = addr + (align - (addr % align)) % align;
 		auto aligned_head = reinterpret_cast<obj*>(aligned_addr);
+		auto padding = aligned_head - head.load();
 
-		if (aligned_head - data > remaining_capacity()) return nullptr;
+		if (count + padding > remaining_capacity()) [[unlikely]] return nullptr;
 		
 		head.store(aligned_head + count);
 		return aligned_head;
@@ -101,16 +105,15 @@ public:
 	template<typename T, typename... arg_Ts>
 	T *alloc_and_cast(uint64_t count = 1, arg_Ts&&... args) noexcept
 	requires(std::is_same<obj, char>::value && std::is_trivially_destructible_v<T>) {
-		// Protects against overflow
 		if (count > SIZE_MAX / sizeof(T)) [[unlikely]] return nullptr;
 
 		auto ptr = alloc(count * sizeof(T), alignof(T));
-		if (ptr == nullptr) return nullptr;
+		if (ptr == nullptr) [[unlikely]] return nullptr;
 
 		auto res = reinterpret_cast<T*>(ptr);
 		
 		for (uint64_t i = 0; i < count; i++) {
-			std::construct_at(res + i, std::forward<arg_Ts...>(args)...);
+			std::construct_at(res + i, std::forward<arg_Ts>(args)...);
 		}
 		
 		return res;
@@ -138,10 +141,10 @@ public:
 	obj *alloc(uint64_t count = 1) noexcept
 	requires(!std::is_same<obj, char>::value) {
 		auto head_local = head.load();
-		if (head_local - data > remaining_capacity()) return nullptr;
+		if (count > remaining_capacity()) [[unlikely]] return nullptr;
 
 		while(!head.try_advance(head_local, head_local + count)) {
-			if (head_local - data > remaining_capacity()) return nullptr;
+			if (count > remaining_capacity()) [[unlikely]] return nullptr;
 		}
 
 		return head_local;
@@ -150,21 +153,23 @@ public:
 	// char specialisation allows for additional align argument
 	obj *alloc(uint64_t count = 1, uint64_t align = 1) noexcept
 	requires(std::is_same<obj, char>::value) {
-		if (align == 0) return nullptr;
+		if (align == 0) [[unlikely]] return nullptr;
 		auto head_local = head.load();
 
 		auto addr = reinterpret_cast<std::uintptr_t>(head_local);
 		auto aligned_addr = addr + (align - (addr % align)) % align;
 		auto aligned_head = reinterpret_cast<obj*>(aligned_addr);
+		auto padding = aligned_head - head_local;
 
-		if (aligned_head - data > remaining_capacity()) return nullptr;
+		if (count + padding > remaining_capacity()) [[unlikely]] return nullptr;
 
 		while(!head.try_advance(head_local, aligned_head + count)) {
 			addr = reinterpret_cast<std::uintptr_t>(head_local);
 			aligned_addr = addr + (align - (addr % align)) % align;
 			aligned_head = reinterpret_cast<obj*>(aligned_addr);
+			padding = aligned_head - head_local;
 
-			if (aligned_head - data > remaining_capacity()) return nullptr;
+			if (count + padding > remaining_capacity()) [[unlikely]] return nullptr;
 		}
 
 		return aligned_head;
@@ -177,12 +182,12 @@ public:
 		if (count > SIZE_MAX / sizeof(T)) [[unlikely]] return nullptr;
 
 		auto ptr = alloc(count * sizeof(T), alignof(T));
-		if (ptr == nullptr) return nullptr;
+		if (ptr == nullptr) [[unlikely]] return nullptr;
 
 		auto res = reinterpret_cast<T*>(ptr);
 		
 		for (uint64_t i = 0; i < count; i++) {
-			std::construct_at(res + i, std::forward<arg_Ts...>(args)...);
+			std::construct_at(res + i, std::forward<arg_Ts>(args)...);
 		}
 		
 		return res;
