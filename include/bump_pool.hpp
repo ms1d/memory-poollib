@@ -88,13 +88,13 @@ public:
 	requires(std::is_same<obj, char>::value) {
 		if (align == 0) return nullptr;
 		
-		auto addr = reinterpret_cast<std::uintptr_t>(head);
+		auto addr = reinterpret_cast<std::uintptr_t>(head.load());
 		auto aligned_addr = addr + (align - (addr % align)) % align;
 		auto aligned_head = reinterpret_cast<obj*>(aligned_addr);
 
 		if (aligned_head - data > remaining_capacity()) return nullptr;
 		
-		head = aligned_head + count;
+		head.store(aligned_head + count);
 		return aligned_head;
 	}
 
