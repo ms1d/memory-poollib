@@ -360,3 +360,5 @@ have finished before resetting it or destroying it.
 - **Thread safety is alloc-only:** `free()` is never thread-safe
 - **External synchronisation is required for reset and destruction:** ensure no
 thread is using the allocator before either operation begins.
+- **Objects are not constructed:** it is the user's responsibility to ensure that
+objects are properly constructed and destructed
