@@ -104,17 +104,18 @@ public:
 	requires(std::is_same<obj, char>::value) {
 		if (align == 0) [[unlikely]] return nullptr;
 
-		obj *p;
-		auto remaining = remaining_capacity(&p);
-		
-		auto addr = reinterpret_cast<std::uintptr_t>(p);
-		auto aligned_addr = addr + (align - (addr % align)) % align;
-		auto aligned_head = reinterpret_cast<obj*>(aligned_addr);
-		auto padding = aligned_head - p;
+		obj *head_local;
+		auto remaining = remaining_capacity(&head_local);
+
+		auto addr = reinterpret_cast<std::uintptr_t>(*head_local);
+		auto padding = (align - (addr % align)) % align;
 
 		if (padding > remaining) [[unlikely]] return nullptr;
 		if (count > remaining - padding) [[unlikely]] return nullptr;
-		
+		if (padding > UINTPTR_MAX - addr) [[unlikely]] return nullptr;
+
+		auto aligned_head = reinterpret_cast<obj*>(addr + padding);
+	
 		head.store(aligned_head + count);
 		return aligned_head;
 	}
@@ -172,29 +173,21 @@ public:
 	requires(std::is_same<obj, char>::value) {
 		if (align == 0) [[unlikely]] return nullptr;
 
-		obj *head_local;
-		auto remaining = remaining_capacity(&head_local);
+		while (1) {
+			obj *head_local;
+			auto remaining = remaining_capacity(&head_local);
 
-		auto addr = reinterpret_cast<std::uintptr_t>(*head_local);
-		auto aligned_addr = addr + (align - (addr % align)) % align;
-		auto aligned_head = reinterpret_cast<obj*>(aligned_addr);
-		auto padding = aligned_head - *head_local;
-
-		if (padding > remaining) [[unlikely]] return nullptr;
-		if (count > remaining - padding) [[unlikely]] return nullptr;
-
-		while(!head.try_advance(*head_local, aligned_head + count)) {
-			remaining = remaining(&head_local, true);
-			addr = reinterpret_cast<std::uintptr_t>(*head_local);
-			aligned_addr = addr + (align - (addr % align)) % align;
-			aligned_head = reinterpret_cast<obj*>(aligned_addr);
-			padding = aligned_head - *head_local;
+			auto addr = reinterpret_cast<std::uintptr_t>(*head_local);
+			auto padding = (align - (addr % align)) % align;
 
 			if (padding > remaining) [[unlikely]] return nullptr;
 			if (count > remaining - padding) [[unlikely]] return nullptr;
-		}
+			if (padding > UINTPTR_MAX - addr) [[unlikely]] return nullptr;
 
-		return aligned_head;
+			auto aligned_head = reinterpret_cast<obj*>(addr + padding);
+			
+			if (head.try_advance(head_local, aligned_head + count)) return aligned_head;
+		}
 	}
 
 	template<typename T, typename... arg_Ts>
