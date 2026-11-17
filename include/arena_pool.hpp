@@ -23,8 +23,14 @@ public:
 		chunks.emplace_back(new bump_pool<obj, chunk_capacity, mp_type::thread_unsafe>);
 	}
 
+	arena(const arena&) = delete;
+	arena& operator=(const arena&) = delete;
+	arena(arena&&) = delete;
+	arena& operator=(arena&&) = delete;
+
 	~arena() {
 		free<true>(-1);
+		delete chunks[0];
 	}
 
 
@@ -87,7 +93,7 @@ public:
 
 	// Free `n` chunks (defaults to 1). If `n` is larger than current number of chunks, free all.
 	// NOT atomic. Intended to be called at synchronisation points ONLY
-	// If `del` is true, it will delete chunks. If false, it will re-use them later
+	// If `del` is true, it will delete chunks **after the first**. If false, it will re-use them later
 	void free(uint64_t n = 1, bool del = false) noexcept {
 		while (n > 0) {
 			if (current_chunk == 0) {
@@ -95,10 +101,11 @@ public:
 				return;
 			}
 
-			if (del) delete chunks[current_chunk];
+			if (del) {
+				delete chunks[current_chunk];
+				chunks.pop_back();
+			}
 			else chunks[current_chunk]->free();
-
-			chunks.pop_back();
 
 			n--;
 			current_chunk--;
@@ -152,14 +159,15 @@ public:
 		chunks_end = chunks;
 	}
 
+	arena(const arena&) = delete;
+	arena& operator=(const arena&) = delete;
+	arena(arena&&) = delete;
+	arena& operator=(arena&&) = delete;
+
 	// Obviously no one should be using the pool once this starts to run
 	~arena() {
-		chunk *curr = chunks;
-		while (curr != nullptr) {
-			auto next = curr->next.load(std::memory_order_relaxed);
-			delete curr;
-			curr = next;
-		}
+		free(-1, true);
+		delete chunks;
 	}
 
 
@@ -273,7 +281,7 @@ public:
 
 	// Free `n` chunks (defaults to 1). If `n` is larger than current number of chunks, free all.
 	// NOT atomic. Intended to be called at synchronisation points ONLY
-	// If `del` is true, it will delete chunks. If false, it will re-use them later
+	// If `del` is true, it will delete chunks **after the first**. If false, it will re-use them later
 	void free(uint64_t n = 1, bool del = false) noexcept {
 		std::vector<chunk*> stack;
 		int current_chunk = -1;
@@ -286,23 +294,23 @@ public:
 			current_chunk++;
 		}
 
-		while (n > 0) {
-			if (current_chunk == 0) {
-				chunks[0].pool.free();
-				return;
-			}
+		while (n > 0 && current_chunk > 0) {
+			chunk *previous = stack[stack.size() - 2];
+			chunks_end.store(previous, std::memory_order_relaxed);
 
 			if (del) {
+				previous->next.store(nullptr, std::memory_order_relaxed);
 				delete stack.back();
-				(stack.back()-1)->next = nullptr;
-			}
-			else stack.back()->pool.free();
+			} else previous->next.load()->pool.free();
 
 			stack.pop_back();
 
 			n--;
 			current_chunk--;
 		}
+
+		// Final pass for the special case of clearing the first chunk
+		if (n > 0) chunks->pool.free();
 	}
 
 	// Templated version of the above
@@ -319,23 +327,23 @@ public:
 			current_chunk++;
 		}
 
-		while (n > 0) {
-			if (current_chunk == 0) {
-				chunks[0].pool.free();
-				return;
-			}
+		while (n > 0 && current_chunk > 0) {
+			chunk *previous = stack[stack.size() - 2];
+			chunks_end.store(previous, std::memory_order_relaxed);
 
 			if constexpr (del) {
+				previous->next.store(nullptr, std::memory_order_relaxed);
 				delete stack.back();
-				(stack.back()-1)->next = nullptr;
-			}
-			else stack.back()->pool.free();
+			} else previous->next.pool.free();
 
 			stack.pop_back();
 
 			n--;
 			current_chunk--;
 		}
+
+		// Final pass for the special case of clearing the first chunk
+		if (n > 0) chunks->pool.free();
 	}
 
 

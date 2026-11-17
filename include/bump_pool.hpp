@@ -26,7 +26,8 @@ class bump_pool_base {
 protected:
 	
 
-	obj *const data;
+	void *const data;
+	obj *data_aligned;
 	ptr head;
 
 
@@ -34,9 +35,15 @@ public:
 
 
 	static_assert(pool_capacity <= SIZE_MAX / sizeof(obj));
-	bump_pool_base() : data((obj *const)std::malloc(sizeof(obj) * pool_capacity)) {
+	// Allocate extra bytes to account for alignment
+	bump_pool_base() : data((void *const)std::malloc(sizeof(obj) * (pool_capacity + alignof(obj) - 1))) {
 		if (!data) throw std::bad_alloc();
-		head.store(data);
+
+		auto data_addr = reinterpret_cast<std::uintptr_t>(data);
+		auto data_addr_aligned = data_addr + (alignof(obj) - (data_addr % alignof(obj))) % alignof(obj);
+		data_aligned = reinterpret_cast<obj*>(data_addr_aligned);
+
+		head.store(data_aligned);
 	}
 
 
@@ -50,11 +57,17 @@ public:
 	bump_pool_base& operator=(bump_pool_base&&) noexcept = delete;
 
 	void free() noexcept {
-		head.store(data);
+		head.store(data_aligned);
 	}
 
-	uint64_t remaining_capacity() const {
-		return pool_capacity - (head.load() - data);
+	// Can optionally write the loaded value to a pointer to reduce loads required
+	// Or re-use a the existing ptr value 
+	uint64_t remaining_capacity(obj **head_local = nullptr, bool reuse = false) const {
+		if (head_local && reuse) return pool_capacity - (*head_local - data_aligned);
+
+		auto lcl = head.load();
+		if (head_local) *head_local = lcl;
+		return pool_capacity - (lcl - data_aligned);
 	}
 };
 
@@ -73,30 +86,34 @@ public:
 
 	using base = bump_pool_base<obj, pool_capacity, ptr_thread_unsafe<obj>>;
 	using base::head;
-	using base::data;
+	using base::data_aligned;
 	using base::free;
 	using base::remaining_capacity;
 
 
 	// Returns ptr to allocated obj, or nullptr if failed
 	obj *alloc(uint64_t count = 1) requires(!std::is_same<obj, char>::value) {
-		obj *p = head.load();
-		if (count > remaining_capacity()) [[unlikely]] return nullptr;
-		head.store(p + count);
-		return p;
+		obj *head_local;
+		if (count > remaining_capacity(&head_local)) [[unlikely]] return nullptr;
+		head.store(head_local + count);
+		return head_local;
 	}
 
 	// char specialisation allows for additional align argument
 	obj *alloc(uint64_t count = 1, uint64_t align = 1) noexcept
 	requires(std::is_same<obj, char>::value) {
 		if (align == 0) [[unlikely]] return nullptr;
+
+		obj *p;
+		auto remaining = remaining_capacity(&p);
 		
-		auto addr = reinterpret_cast<std::uintptr_t>(head.load());
+		auto addr = reinterpret_cast<std::uintptr_t>(p);
 		auto aligned_addr = addr + (align - (addr % align)) % align;
 		auto aligned_head = reinterpret_cast<obj*>(aligned_addr);
-		auto padding = aligned_head - head.load();
+		auto padding = aligned_head - p;
 
-		if (count + padding > remaining_capacity()) [[unlikely]] return nullptr;
+		if (padding > remaining) [[unlikely]] return nullptr;
+		if (count > remaining - padding) [[unlikely]] return nullptr;
 		
 		head.store(aligned_head + count);
 		return aligned_head;
@@ -132,7 +149,7 @@ public:
 
 	using base = bump_pool_base<obj, pool_capacity, ptr_thread_safe<obj>>;
 	using base::head;
-	using base::data;
+	using base::data_aligned;
 	using base::free;
 	using base::remaining_capacity;
 
@@ -140,11 +157,11 @@ public:
 	// Returns ptr to allocated obj, or nullptr if failed
 	obj *alloc(uint64_t count = 1) noexcept
 	requires(!std::is_same<obj, char>::value) {
-		auto head_local = head.load();
-		if (count > remaining_capacity()) [[unlikely]] return nullptr;
+		obj *head_local;
+		if (count > remaining_capacity(&head_local)) [[unlikely]] return nullptr;
 
-		while(!head.try_advance(head_local, head_local + count)) {
-			if (count > remaining_capacity()) [[unlikely]] return nullptr;
+		while(!head.try_advance(*head_local, *head_local + count)) {
+			if (count > remaining_capacity(&head_local, true)) [[unlikely]] return nullptr;
 		}
 
 		return head_local;
@@ -154,22 +171,26 @@ public:
 	obj *alloc(uint64_t count = 1, uint64_t align = 1) noexcept
 	requires(std::is_same<obj, char>::value) {
 		if (align == 0) [[unlikely]] return nullptr;
-		auto head_local = head.load();
 
-		auto addr = reinterpret_cast<std::uintptr_t>(head_local);
+		obj *head_local;
+		auto remaining = remaining_capacity(&head_local);
+
+		auto addr = reinterpret_cast<std::uintptr_t>(*head_local);
 		auto aligned_addr = addr + (align - (addr % align)) % align;
 		auto aligned_head = reinterpret_cast<obj*>(aligned_addr);
-		auto padding = aligned_head - head_local;
+		auto padding = aligned_head - *head_local;
 
-		if (count + padding > remaining_capacity()) [[unlikely]] return nullptr;
+		if (padding > remaining) [[unlikely]] return nullptr;
+		if (count > remaining_capacity(&head_local, true) - padding) [[unlikely]] return nullptr;
 
-		while(!head.try_advance(head_local, aligned_head + count)) {
-			addr = reinterpret_cast<std::uintptr_t>(head_local);
+		while(!head.try_advance(*head_local, aligned_head + count)) {
+			addr = reinterpret_cast<std::uintptr_t>(*head_local);
 			aligned_addr = addr + (align - (addr % align)) % align;
 			aligned_head = reinterpret_cast<obj*>(aligned_addr);
-			padding = aligned_head - head_local;
+			padding = aligned_head - *head_local;
 
-			if (count + padding > remaining_capacity()) [[unlikely]] return nullptr;
+			if (padding > remaining) [[unlikely]] return nullptr;
+			if (count > remaining_capacity(&head_local, true) - padding) [[unlikely]] return nullptr;
 		}
 
 		return aligned_head;
