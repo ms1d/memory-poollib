@@ -34,9 +34,9 @@ protected:
 public:
 
 
-	static_assert(pool_capacity <= SIZE_MAX / sizeof(obj));
+	static_assert(pool_capacity <= (SIZE_MAX - alignof(obj) + 1) / sizeof(obj));
 	// Allocate extra bytes to account for alignment
-	bump_pool_base() : data((void *const)std::malloc(sizeof(obj) * (pool_capacity + alignof(obj) - 1))) {
+	bump_pool_base() : data((void *const)std::malloc(sizeof(obj) * (pool_capacity) + alignof(obj) - 1)) {
 		if (!data) throw std::bad_alloc();
 
 		auto data_addr = reinterpret_cast<std::uintptr_t>(data);
@@ -181,16 +181,17 @@ public:
 		auto padding = aligned_head - *head_local;
 
 		if (padding > remaining) [[unlikely]] return nullptr;
-		if (count > remaining_capacity(&head_local, true) - padding) [[unlikely]] return nullptr;
+		if (count > remaining - padding) [[unlikely]] return nullptr;
 
 		while(!head.try_advance(*head_local, aligned_head + count)) {
+			remaining = remaining(&head_local, true);
 			addr = reinterpret_cast<std::uintptr_t>(*head_local);
 			aligned_addr = addr + (align - (addr % align)) % align;
 			aligned_head = reinterpret_cast<obj*>(aligned_addr);
 			padding = aligned_head - *head_local;
 
 			if (padding > remaining) [[unlikely]] return nullptr;
-			if (count > remaining_capacity(&head_local, true) - padding) [[unlikely]] return nullptr;
+			if (count > remaining - padding) [[unlikely]] return nullptr;
 		}
 
 		return aligned_head;
