@@ -12,7 +12,7 @@
   - [Benchmarks](#benchmarks)
   - [Limitations](#limitations)
 
-Several lightweight, specialised memory pool implementations in C++ designed for
+Several lightweight, specialised memory pool implementations in C++23 designed for
 efficient allocation and reuse of memory.
 
 ## Features
@@ -360,8 +360,7 @@ have finished before resetting it or destroying it.
 - **Thread safety is alloc-only:** `free()` is never thread-safe
 - **External synchronisation is required for reset and destruction:** ensure no
 thread is using the allocator before either operation begins.
-- **Objects are not constructed:** it is the user's responsibility to ensure that
-objects are properly constructed and destructed
-- **Object constructors must not throw:** all methods are marked `noexcept`
-- **`alloc_and_cast` forwards the same args per element: be careful when passing
-rvalues to create an array, since this can double-move them**
+- **Objects are not constructed from `alloc()`:** it is the user's responsibility
+to ensure that objects are properly constructed and destructed
+- **Object constructors must not throw:** all `alloc_and_construct()` methods enforce
+that constructors do not throw
