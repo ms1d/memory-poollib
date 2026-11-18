@@ -16,6 +16,14 @@ enum mp_type {
 };
 
 
+
+// Use deprecated as a workaround to warn users about non-trivial destructors
+[[deprecated("`obj` is NOT trivially destructible - you are responsible for its destruction")]]
+constexpr void warn() {};
+template<typename T>
+constexpr void warn_trivial_destructibility() { if constexpr (!std::is_trivially_destructible_v<T>) warn(); }
+
+
 template<typename obj, uint64_t pool_capacity, typename ptr>
 requires (std::same_as<ptr, ptr_thread_unsafe<obj>> || std::same_as<ptr, ptr_thread_safe<obj>>)
 class bump_pool_base {
@@ -26,11 +34,6 @@ protected:
 	obj *data_aligned;
 	ptr head;
 	
-	// Use deprecated as a workaround to warn users about non-trivial destructors
-	[[deprecated("`obj` is NOT trivially destructible - you are responsible for its destruction")]]
-	constexpr void warn() {};
-	template<typename T>
-	constexpr void warn_trivial_destructibility() { if constexpr (!std::is_trivially_destructible_v<T>) warn(); }
 
 
 public:
@@ -102,7 +105,6 @@ public:
 	using base::data_aligned;
 	using base::free;
 	using base::remaining_capacity;
-	using base::warn_trivial_destructibility;
 
 
 	// Returns ptr to allocated obj, or nullptr if failed
@@ -171,7 +173,7 @@ public:
 	template<typename T, typename... arg_Ts>
 	T *alloc_and_construct(uint64_t count = 1, arg_Ts&&... args) noexcept 
 	requires (std::is_same_v<obj, char> && std::is_nothrow_constructible_v<T, arg_Ts&...>) {
-		this->template warn_trivial_destructibility<T>();
+		warn_trivial_destructibility<T>();
 		if (count > SIZE_MAX / sizeof(T)) [[unlikely]] return nullptr;
 
 		obj *ptr = alloc(count * sizeof(T), alignof(T));
@@ -191,7 +193,7 @@ public:
 	template<typename T, typename... arg_Ts>
 	T *alloc_and_construct_one(arg_Ts&&... args) noexcept
 	requires(std::is_same_v<obj, char> && std::is_nothrow_constructible_v<T, arg_Ts...>) {
-		this->template warn_trivial_destructibility<T>();
+		warn_trivial_destructibility<T>();
 
 		auto ptr = alloc(1 * sizeof(T), alignof(T));
 		if (ptr == nullptr) [[unlikely]] return nullptr;
@@ -218,7 +220,6 @@ public:
 	using base::data_aligned;
 	using base::free;
 	using base::remaining_capacity;
-	using base::warn_trivial_destructibility;
 
 
 	// Returns ptr to allocated obj, or nullptr if failed
@@ -291,7 +292,7 @@ public:
 	template<typename T, typename... arg_Ts>
 	T *alloc_and_construct(uint64_t count = 1, arg_Ts&&... args) noexcept 
 	requires (std::is_same_v<obj, char> && std::is_nothrow_constructible_v<T, arg_Ts&...>) {
-		this->template warn_trivial_destructibility<T>();
+		warn_trivial_destructibility<T>();
 		if (count > SIZE_MAX / sizeof(T)) [[unlikely]] return nullptr;
 
 		obj *ptr = alloc(count * sizeof(T), alignof(T));
@@ -311,7 +312,7 @@ public:
 	template<typename T, typename... arg_Ts>
 	T *alloc_and_construct_one(arg_Ts&&... args) noexcept
 	requires(std::is_same_v<obj, char> && std::is_nothrow_constructible_v<T, arg_Ts...>) {
-		this->template warn_trivial_destructibility<T>();
+		warn_trivial_destructibility<T>();
 
 		auto ptr = alloc(1 * sizeof(T), alignof(T));
 		if (ptr == nullptr) [[unlikely]] return nullptr;

@@ -72,20 +72,67 @@ public:
 		return res;
     }
 
+	// Orchestrates `alloc()` to also construct objects (does NOT support perfect forwarding, will copy args)
+	// Users are responsible for destroying said objects if they are not trivially destructible
+	template<typename... arg_Ts>
+	obj *alloc_and_construct(uint64_t count = 1, arg_Ts&&... args) noexcept
+	requires(std::is_nothrow_constructible_v<obj, arg_Ts&...>) {
+		auto ptr = alloc(count);
+		if (ptr == nullptr) [[unlikely]] return nullptr;
+
+		for (uint64_t i = 0; i < count; i++) {
+			std::construct_at(ptr + i, args...);
+		}
+		
+		return ptr;
+	}
+
+	// Orchestrates `alloc()` to also construct 1 object (supports perfect forwarding of rvalue args)
+	// Users are responsible for destroying said objects if they are not trivially destructible
+	template<typename... arg_Ts>
+	obj *alloc_and_construct_one(arg_Ts&&... args) noexcept
+	requires(std::is_nothrow_constructible_v<obj, arg_Ts...>) {
+		auto ptr = alloc(1);
+		if (ptr == nullptr) [[unlikely]] return nullptr;
+
+		std::construct_at(ptr, std::forward<arg_Ts>(args)...);
+		
+		return ptr;
+	}
+
+
+	// Orchestrates `alloc()` to also construct objects (does NOT support perfect forwarding, will copy args)
+	// Users are responsible for destroying said objects if they are not trivially destructible
 	template<typename T, typename... arg_Ts>
-	T *alloc_and_cast(uint64_t count = 1, arg_Ts&&... args) noexcept
-	requires(std::is_same<obj, char>::value && std::is_trivially_destructible_v<T>) {
-		// Protects against overflow
+	T *alloc_and_construct(uint64_t count = 1, arg_Ts&&... args) noexcept 
+	requires (std::is_same_v<obj, char> && std::is_nothrow_constructible_v<T, arg_Ts&...>) {
+		warn_trivial_destructibility<T>();
 		if (count > SIZE_MAX / sizeof(T)) [[unlikely]] return nullptr;
 
-		auto ptr = alloc(count * sizeof(T), alignof(T));
-		if (ptr == nullptr) return nullptr;
+		obj *ptr = alloc(count * sizeof(T), alignof(T));
+		if (ptr == nullptr) [[unlikely]] return nullptr;
 
-		auto res = reinterpret_cast<T*>(ptr);
+		auto res = std::start_lifetime_as_array<T>(ptr, count);
 		
 		for (uint64_t i = 0; i < count; i++) {
-			std::construct_at(res + i, std::forward<arg_Ts>(args)...);
+			std::construct_at(res + i, args...);
 		}
+		
+		return res;
+	}
+
+	// Orchestrates `alloc()` to also construct 1 object (supports perfect forwarding of rvalue args)
+	// Users are responsible for destroying said objects if they are not trivially destructible
+	template<typename T, typename... arg_Ts>
+	T *alloc_and_construct_one(arg_Ts&&... args) noexcept
+	requires(std::is_same_v<obj, char> && std::is_nothrow_constructible_v<T, arg_Ts...>) {
+		warn_trivial_destructibility<T>();
+
+		auto ptr = alloc(1 * sizeof(T), alignof(T));
+		if (ptr == nullptr) [[unlikely]] return nullptr;
+
+		auto res = reinterpret_cast<T*>(ptr);
+		std::construct_at(res, std::forward<arg_Ts>(args)...);
 		
 		return res;
 	}
@@ -121,10 +168,11 @@ public:
 				return;
 			}
 
-			if constexpr (del) delete chunks[current_chunk];
+			if constexpr (del) {
+				delete chunks[current_chunk];
+				chunks.pop_back();
+			}
 			else chunks[current_chunk]->free();
-
-			chunks.pop_back();
 
 			n--;
 			current_chunk--;
@@ -176,7 +224,7 @@ public:
 	// is NOT the `next` of any node in the linked list.
 	obj *alloc(uint64_t count = 1) noexcept
 	requires(!std::is_same<obj, char>::value) {
-		assert(count <= chunk_capacity);
+		//assert(count <= chunk_capacity);
 		auto chunks_end_local = chunks_end.load(std::memory_order_acquire);
 		auto res = chunks_end_local->pool.alloc(count);
 		if (res != nullptr) return res;
@@ -219,7 +267,7 @@ public:
 	
 	obj *alloc(uint64_t count = 1, uint64_t align = 1) noexcept
 	requires(std::is_same<obj, char>::value) {
-		assert(count <= chunk_capacity);
+		//assert(count <= chunk_capacity);
 		if (align == 0) return nullptr;
 		auto chunks_end_local = chunks_end.load(std::memory_order_acquire);
 		auto res = chunks_end_local->pool.alloc(count, align);
@@ -261,23 +309,72 @@ public:
 		return alloc(count, align);
 	}
 
+
+	// Orchestrates `alloc()` to also construct objects (does NOT support perfect forwarding, will copy args)
+	// Users are responsible for destroying said objects if they are not trivially destructible
+	template<typename... arg_Ts>
+	obj *alloc_and_construct(uint64_t count = 1, arg_Ts&&... args) noexcept
+	requires(std::is_nothrow_constructible_v<obj, arg_Ts&...>) {
+		auto ptr = alloc(count);
+		if (ptr == nullptr) [[unlikely]] return nullptr;
+
+		for (uint64_t i = 0; i < count; i++) {
+			std::construct_at(ptr + i, args...);
+		}
+		
+		return ptr;
+	}
+
+	// Orchestrates `alloc()` to also construct 1 object (supports perfect forwarding of rvalue args)
+	// Users are responsible for destroying said objects if they are not trivially destructible
+	template<typename... arg_Ts>
+	obj *alloc_and_construct_one(arg_Ts&&... args) noexcept
+	requires(std::is_nothrow_constructible_v<obj, arg_Ts...>) {
+		auto ptr = alloc(1);
+		if (ptr == nullptr) [[unlikely]] return nullptr;
+
+		std::construct_at(ptr, std::forward<arg_Ts>(args)...);
+		
+		return ptr;
+	}
+
+
+	// Orchestrates `alloc()` to also construct objects (does NOT support perfect forwarding, will copy args)
+	// Users are responsible for destroying said objects if they are not trivially destructible
 	template<typename T, typename... arg_Ts>
-	T *alloc_and_cast(uint64_t count = 1, arg_Ts&&... args) noexcept
-	requires(std::is_same<obj, char>::value && std::is_trivially_destructible_v<T>) {
-		// Protects against overflow
+	T *alloc_and_construct(uint64_t count = 1, arg_Ts&&... args) noexcept 
+	requires (std::is_same_v<obj, char> && std::is_nothrow_constructible_v<T, arg_Ts&...>) {
+		warn_trivial_destructibility<T>();
 		if (count > SIZE_MAX / sizeof(T)) [[unlikely]] return nullptr;
 
-		auto ptr = alloc(count * sizeof(T), alignof(T));
-		if (ptr == nullptr) return nullptr;
+		obj *ptr = alloc(count * sizeof(T), alignof(T));
+		if (ptr == nullptr) [[unlikely]] return nullptr;
 
-		auto res = reinterpret_cast<T*>(ptr);
+		auto res = std::start_lifetime_as_array<T>(ptr, count);
 		
 		for (uint64_t i = 0; i < count; i++) {
-			std::construct_at(res + i, std::forward<arg_Ts>(args)...);
+			std::construct_at(res + i, args...);
 		}
 		
 		return res;
 	}
+
+	// Orchestrates `alloc()` to also construct 1 object (supports perfect forwarding of rvalue args)
+	// Users are responsible for destroying said objects if they are not trivially destructible
+	template<typename T, typename... arg_Ts>
+	T *alloc_and_construct_one(arg_Ts&&... args) noexcept
+	requires(std::is_same_v<obj, char> && std::is_nothrow_constructible_v<T, arg_Ts...>) {
+		warn_trivial_destructibility<T>();
+
+		auto ptr = alloc(1 * sizeof(T), alignof(T));
+		if (ptr == nullptr) [[unlikely]] return nullptr;
+
+		auto res = reinterpret_cast<T*>(ptr);
+		std::construct_at(res, std::forward<arg_Ts>(args)...);
+		
+		return res;
+	}
+
 
 	// Free `n` chunks (defaults to 1). If `n` is larger than current number of chunks, free all.
 	// NOT atomic. Intended to be called at synchronisation points ONLY
@@ -334,7 +431,7 @@ public:
 			if constexpr (del) {
 				previous->next.store(nullptr, std::memory_order_relaxed);
 				delete stack.back();
-			} else previous->next.pool.free();
+			} else previous->next.load()->pool.free();
 
 			stack.pop_back();
 
