@@ -202,10 +202,7 @@ struct chunk {
 
 
 public:
-	arena() {
-		chunks = new chunk;
-		chunks_end = chunks;
-	}
+	arena() : chunks(new chunk), chunks_end(chunks) { }
 
 	arena(const arena&) = delete;
 	arena& operator=(const arena&) = delete;
@@ -214,7 +211,7 @@ public:
 
 	// Obviously no one should be using the pool once this starts to run
 	~arena() {
-		free(-1, true);
+		free<true>(-1);
 		delete chunks;
 	}
 
@@ -440,14 +437,17 @@ public:
 		}
 
 		// Final pass for the special case of clearing the first chunk
+		// As of writing, GCC throws an erroneous warning under -Wno-strinop-overflow
+		// when this redundant null check is removed. It is kept to keep it quiet
+		if (!chunks) [[unlikely]] return;
 		if (n > 0) chunks->pool.free();
 	}
 
 
 
 private:
-	chunk *chunks = nullptr;
-	std::atomic<chunk*> chunks_end = nullptr;
+	chunk *chunks;
+	std::atomic<chunk*> chunks_end;
 
 
 
