@@ -18,10 +18,11 @@ enum mp_type {
 
 
 // Use deprecated as a workaround to warn users about non-trivial destructors
+template<typename T>
 [[deprecated("`obj` is NOT trivially destructible - you are responsible for its destruction")]]
 constexpr void warn() {};
 template<typename T>
-constexpr void warn_trivial_destructibility() { if constexpr (!std::is_trivially_destructible_v<T>) warn(); }
+constexpr void warn_trivial_destructibility() { if constexpr (!std::is_trivially_destructible_v<T>) warn<T>(); }
 
 
 template<typename obj, uint64_t pool_capacity, typename ptr>
